@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\UserLoginRequest;
 use App\Http\Requests\UserStoreRequest;
+use App\Http\Resources\UserResourse;
+use App\Http\Resources\WalletResource;
 use App\Models\User;
 use App\Models\Wallet;
 use Illuminate\Http\Request;
@@ -15,6 +17,11 @@ use Symfony\Component\HttpFoundation\Response;
 
 class AuthController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('auth:api', ['except' => ['login', 'register']]);
+    }
+    
     public function register(UserStoreRequest $request)
     {
         $validated = $request->validated();
@@ -31,26 +38,45 @@ class AuthController extends Controller
             Log::error($th->getMessage());
             return response('has error', Response::HTTP_INTERNAL_SERVER_ERROR);
         }
-        
 
-        $token = $user->createToken('register')->plainTextToken;
-
-        return [$user, $wallet, $token];
+        return [
+            UserResourse::make($user),
+            WalletResource::make($wallet),
+        ];
     }
 
-    public function authenticate(UserLoginRequest $request)
+    public function login(UserLoginRequest $request)
     {
         $validated = $request->validated();
 
-        if(!Auth::attempt($validated))
-        {
-            return "information is not valid";
+        if (! $token = auth()->attempt($validated)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
         }
 
-        $user = Auth::user();
+        return $this->respondWithToken($token);
+    }
 
-        $token = $user->createToken('login')->plainTextToken;
+    public function profile()
+    {
+        $user = response()->json(auth()->user());
+        return UserResourse::make($user);
+    }
 
-        return [$user , $token];
+    public function logout()
+    {
+        auth()->logout();
+
+        return response()->json([
+            'message' => 'Successfully loged out!',
+        ]);
+    }
+
+    protected function respondWithToken($token)
+    {
+        return response()->json([
+            'access_token' => $token,
+            'token_type' => 'bearer',
+            'expires_in' => auth()->factory()->getTTL() * 60
+        ]);
     }
 }
